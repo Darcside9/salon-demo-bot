@@ -356,19 +356,30 @@ function dashboardHTML() {
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --bg: #0f1117;
-    --surface: #1a1d27;
-    --surface-2: #232733;
-    --border: #2e3345;
-    --text: #e4e6ef;
-    --text-dim: #8b8fa3;
-    --accent: #6c5ce7;
-    --accent-glow: rgba(108, 92, 231, 0.15);
-    --green: #00d68f;
-    --red: #ff6b6b;
-    --orange: #ffa94d;
-    --blue: #54a0ff;
-    --radius: 12px;
+    --bg: #0b0d12;
+    --surface: #141720;
+    --surface-2: #1c2030;
+    --surface-3: #252a3a;
+    --border: #2a2f42;
+    --border-hover: #3d4463;
+    --text: #e8eaf0;
+    --text-dim: #7c819a;
+    --accent: #7c6df0;
+    --accent-light: #a29bfe;
+    --accent-glow: rgba(124, 109, 240, 0.12);
+    --accent-glow-strong: rgba(124, 109, 240, 0.25);
+    --green: #34d399;
+    --green-glow: rgba(52, 211, 153, 0.12);
+    --red: #f87171;
+    --red-glow: rgba(248, 113, 113, 0.12);
+    --orange: #fbbf24;
+    --orange-glow: rgba(251, 191, 36, 0.12);
+    --blue: #60a5fa;
+    --blue-glow: rgba(96, 165, 250, 0.12);
+    --radius: 14px;
+    --radius-sm: 10px;
+    --ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
   body {
@@ -377,57 +388,125 @@ function dashboardHTML() {
     color: var(--text);
     min-height: 100vh;
     padding: 0;
+    -webkit-font-smoothing: antialiased;
   }
 
+  /* ── Custom Scrollbars ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+
+  /* ── Header ── */
   .header {
-    background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+    background: linear-gradient(135deg, rgba(20, 23, 32, 0.95) 0%, rgba(28, 32, 48, 0.95) 100%);
+    backdrop-filter: blur(20px) saturate(1.5);
+    -webkit-backdrop-filter: blur(20px) saturate(1.5);
     border-bottom: 1px solid var(--border);
-    padding: 20px 32px;
+    padding: 18px 32px;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
   }
 
   .header h1 {
-    font-size: 1.3rem;
+    font-size: 1.25rem;
     font-weight: 700;
-    background: linear-gradient(135deg, var(--accent), #a29bfe);
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 50%, #ddd6fe 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
+    letter-spacing: -0.3px;
   }
 
   .header .badge {
-    font-size: 0.75rem;
-    padding: 4px 12px;
+    font-size: 0.7rem;
+    padding: 5px 14px;
     border-radius: 20px;
     font-weight: 600;
+    letter-spacing: 0.5px;
+    transition: all 0.3s var(--ease);
   }
 
-  .badge-on { background: rgba(0, 214, 143, 0.15); color: var(--green); }
-  .badge-off { background: rgba(255, 107, 107, 0.15); color: var(--red); }
+  .badge-on {
+    background: var(--green-glow);
+    color: var(--green);
+    box-shadow: 0 0 12px rgba(52, 211, 153, 0.15);
+  }
+  .badge-off {
+    background: var(--red-glow);
+    color: var(--red);
+    box-shadow: 0 0 12px rgba(248, 113, 113, 0.15);
+  }
+
+  /* ── Salon Dropdown ── */
+  #salon-select {
+    appearance: none;
+    -webkit-appearance: none;
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 32px 8px 14px;
+    font-family: inherit;
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.25s var(--ease);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='7' viewBox='0 0 12 7'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237c819a' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    outline: none;
+  }
+  #salon-select:hover { border-color: var(--accent); }
+  #salon-select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+  #salon-select option { background: var(--surface-2); color: var(--text); }
 
   .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
 
+  /* ── Grid ── */
   .grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 20px;
-    margin-bottom: 20px;
+    gap: 18px;
+    margin-bottom: 22px;
   }
 
+  /* ── Cards ── */
   .card {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 20px 24px;
-    transition: border-color 0.2s;
+    transition: all 0.3s var(--ease);
+    position: relative;
+    overflow: hidden;
   }
-  .card:hover { border-color: var(--accent); }
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-light));
+    opacity: 0;
+    transition: opacity 0.3s var(--ease);
+  }
+  .card:hover {
+    border-color: var(--border-hover);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.2), 0 0 0 1px rgba(124,109,240,0.06);
+    transform: translateY(-1px);
+  }
+  .card:hover::before { opacity: 1; }
 
   .card-title {
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
+    letter-spacing: 1.8px;
     color: var(--text-dim);
     margin-bottom: 14px;
     font-weight: 600;
@@ -437,51 +516,104 @@ function dashboardHTML() {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 6px 0;
-    border-bottom: 1px solid rgba(46, 51, 69, 0.5);
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(42, 47, 66, 0.4);
+    transition: background 0.2s var(--ease);
   }
   .stat-row:last-child { border-bottom: none; }
-  .stat-label { color: var(--text-dim); font-size: 0.85rem; }
+  .stat-row:hover { background: rgba(124,109,240,0.04); border-radius: 6px; }
+  .stat-label { color: var(--text-dim); font-size: 0.84rem; }
   .stat-value { font-weight: 600; font-size: 0.95rem; }
 
+  /* ── Controls ── */
   .controls {
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
   }
 
+  /* ── Buttons ── */
   .btn {
-    padding: 10px 20px;
+    padding: 10px 22px;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     background: var(--surface-2);
     color: var(--text);
     font-family: inherit;
-    font-size: 0.85rem;
+    font-size: 0.83rem;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.25s var(--ease);
+    position: relative;
+    overflow: hidden;
   }
-  .btn:hover { border-color: var(--accent); background: var(--accent-glow); }
-  .btn:active { transform: scale(0.97); }
-  .btn-green { border-color: var(--green); color: var(--green); }
-  .btn-green:hover { background: rgba(0, 214, 143, 0.1); }
-  .btn-red { border-color: var(--red); color: var(--red); }
-  .btn-red:hover { background: rgba(255, 107, 107, 0.1); }
-  .btn-blue { border-color: var(--blue); color: var(--blue); }
-  .btn-blue:hover { background: rgba(84, 160, 255, 0.1); }
-  .btn-orange { border-color: var(--orange); color: var(--orange); }
-  .btn-orange:hover { background: rgba(255, 169, 77, 0.1); }
-  .btn-sm { padding: 6px 14px; font-size: 0.75rem; }
+  .btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at center, rgba(255,255,255,0.08) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.3s var(--ease);
+  }
+  .btn:hover {
+    border-color: var(--accent);
+    background: var(--accent-glow);
+    transform: translateY(-1px);
+    box-shadow: 0 3px 12px rgba(0,0,0,0.2);
+  }
+  .btn:hover::after { opacity: 1; }
+  .btn:active { transform: translateY(0) scale(0.97); box-shadow: none; }
+  .btn-green {
+    border-color: rgba(52,211,153,0.4);
+    color: var(--green);
+    background: var(--green-glow);
+  }
+  .btn-green:hover {
+    background: rgba(52, 211, 153, 0.2);
+    border-color: var(--green);
+    box-shadow: 0 3px 12px rgba(52,211,153,0.15);
+  }
+  .btn-red {
+    border-color: rgba(248,113,113,0.4);
+    color: var(--red);
+    background: var(--red-glow);
+  }
+  .btn-red:hover {
+    background: rgba(248, 113, 113, 0.2);
+    border-color: var(--red);
+    box-shadow: 0 3px 12px rgba(248,113,113,0.15);
+  }
+  .btn-blue {
+    border-color: rgba(96,165,250,0.4);
+    color: var(--blue);
+    background: var(--blue-glow);
+  }
+  .btn-blue:hover {
+    background: rgba(96, 165, 250, 0.2);
+    border-color: var(--blue);
+    box-shadow: 0 3px 12px rgba(96,165,250,0.15);
+  }
+  .btn-orange {
+    border-color: rgba(251,191,36,0.4);
+    color: var(--orange);
+    background: var(--orange-glow);
+  }
+  .btn-orange:hover {
+    background: rgba(251, 191, 36, 0.2);
+    border-color: var(--orange);
+    box-shadow: 0 3px 12px rgba(251,191,36,0.15);
+  }
+  .btn-sm { padding: 6px 14px; font-size: 0.73rem; border-radius: 8px; }
 
+  /* ── Tabs ── */
   .tabs {
     display: flex;
-    gap: 0;
+    gap: 2px;
     margin-bottom: 0;
     flex-wrap: wrap;
   }
   .tab {
-    padding: 10px 20px;
+    padding: 11px 22px;
     background: var(--surface-2);
     border: 1px solid var(--border);
     border-bottom: none;
@@ -491,37 +623,64 @@ function dashboardHTML() {
     font-weight: 500;
     color: var(--text-dim);
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.25s var(--ease);
     position: relative;
   }
-  .tab.active { background: var(--surface); color: var(--accent); border-color: var(--accent); }
+  .tab::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 50%; right: 50%;
+    height: 2px;
+    background: var(--accent);
+    border-radius: 1px;
+    transition: all 0.3s var(--ease-bounce);
+  }
+  .tab:hover {
+    color: var(--text);
+    background: var(--surface-3);
+  }
+  .tab.active {
+    background: var(--surface);
+    color: var(--accent-light);
+    border-color: var(--border-hover);
+  }
+  .tab.active::after {
+    left: 12px;
+    right: 12px;
+  }
   .tab .tab-badge {
     position: absolute; top: 4px; right: 6px;
     background: var(--red); color: #fff; font-size: 0.6rem;
     padding: 1px 5px; border-radius: 8px; font-weight: 700;
     display: none;
+    animation: badgePop 0.3s var(--ease-bounce);
   }
   .tab .tab-badge.show { display: inline; }
 
+  /* ── Tab Panels ── */
   .tab-panel {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 0 var(--radius) var(--radius) var(--radius);
-    padding: 20px;
+    padding: 22px;
     min-height: 300px;
     display: none;
   }
-  .tab-panel.active { display: block; }
+  .tab-panel.active {
+    display: block;
+    animation: panelFadeIn 0.35s var(--ease);
+  }
 
   .config-text {
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     font-size: 0.8rem;
-    line-height: 1.6;
+    line-height: 1.7;
     color: var(--text-dim);
     white-space: pre-wrap;
     word-break: break-word;
     max-height: 400px;
     overflow-y: auto;
+    padding: 4px;
   }
 
   .log-container {
@@ -531,7 +690,13 @@ function dashboardHTML() {
     font-size: 0.75rem;
     line-height: 1.8;
   }
-  .log-line { padding: 2px 0; border-bottom: 1px solid rgba(46,51,69,0.3); }
+  .log-line {
+    padding: 3px 6px;
+    border-bottom: 1px solid rgba(42,47,66,0.25);
+    border-radius: 4px;
+    transition: background 0.15s var(--ease);
+  }
+  .log-line:hover { background: rgba(124,109,240,0.04); }
   .log-time { color: var(--text-dim); margin-right: 8px; }
   .log-error { color: var(--red); }
   .log-warn { color: var(--orange); }
@@ -542,55 +707,76 @@ function dashboardHTML() {
   .queue-item {
     background: var(--surface-2);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     padding: 14px 18px;
     margin-bottom: 10px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 16px;
-    transition: border-color 0.2s;
+    transition: all 0.25s var(--ease);
   }
-  .queue-item:hover { border-color: var(--accent); }
+  .queue-item:hover {
+    border-color: var(--border-hover);
+    transform: translateX(3px);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+  }
   .queue-info { flex: 1; }
   .queue-customer { font-weight: 600; font-size: 0.9rem; }
   .queue-reason {
-    font-size: 0.75rem; color: var(--orange);
-    text-transform: uppercase; letter-spacing: 1px; margin-top: 2px;
+    font-size: 0.73rem; color: var(--orange);
+    text-transform: uppercase; letter-spacing: 1px; margin-top: 3px;
   }
   .queue-message { font-size: 0.8rem; color: var(--text-dim); margin-top: 4px; }
   .queue-time { font-size: 0.7rem; color: var(--text-dim); }
   .queue-actions { display: flex; gap: 6px; flex-shrink: 0; }
   .queue-status {
-    font-size: 0.7rem; padding: 2px 8px;
-    border-radius: 10px; font-weight: 600;
+    font-size: 0.7rem; padding: 3px 10px;
+    border-radius: 12px; font-weight: 600;
   }
-  .status-requested { background: rgba(255,169,77,0.15); color: var(--orange); }
-  .status-claimed { background: rgba(84,160,255,0.15); color: var(--blue); }
+  .status-requested { background: var(--orange-glow); color: var(--orange); }
+  .status-claimed { background: var(--blue-glow); color: var(--blue); }
 
   .empty-state {
     text-align: center; color: var(--text-dim);
-    padding: 40px; font-size: 0.9rem;
+    padding: 48px 24px; font-size: 0.9rem;
   }
 
   /* ── Chat styles ── */
-  .chat-layout { display: grid; grid-template-columns: 280px 1fr; gap: 16px; min-height: 400px; }
-  .chat-list { border-right: 1px solid var(--border); padding-right: 16px; overflow-y: auto; max-height: 500px; }
-  .chat-list-item {
-    padding: 10px 12px; border-radius: 8px; cursor: pointer;
-    border: 1px solid transparent; margin-bottom: 6px; transition: all 0.2s;
+  .chat-layout { display: grid; grid-template-columns: 280px 1fr; gap: 16px; min-height: 420px; }
+  .chat-list {
+    border-right: 1px solid var(--border);
+    padding-right: 16px;
+    overflow-y: auto;
+    max-height: 520px;
   }
-  .chat-list-item:hover { background: var(--surface-2); border-color: var(--border); }
-  .chat-list-item.active { background: var(--accent-glow); border-color: var(--accent); }
+  .chat-list-item {
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    border: 1px solid transparent;
+    margin-bottom: 6px;
+    transition: all 0.2s var(--ease);
+  }
+  .chat-list-item:hover {
+    background: var(--surface-2);
+    border-color: var(--border);
+    transform: translateX(2px);
+  }
+  .chat-list-item.active {
+    background: var(--accent-glow);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent-glow);
+  }
   .chat-list-name { font-weight: 600; font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center; }
   .chat-list-preview { font-size: 0.75rem; color: var(--text-dim); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chat-mode-badge {
-    font-size: 0.6rem; padding: 1px 6px; border-radius: 8px; font-weight: 600;
+    font-size: 0.6rem; padding: 2px 7px; border-radius: 8px; font-weight: 600;
     text-transform: uppercase; letter-spacing: 0.5px;
   }
-  .mode-bot { background: rgba(0,214,143,0.15); color: var(--green); }
-  .mode-human { background: rgba(84,160,255,0.15); color: var(--blue); }
-  .mode-handover_requested { background: rgba(255,169,77,0.15); color: var(--orange); }
+  .mode-bot { background: var(--green-glow); color: var(--green); }
+  .mode-human { background: var(--blue-glow); color: var(--blue); }
+  .mode-handover_requested { background: var(--orange-glow); color: var(--orange); }
 
   .chat-thread { display: flex; flex-direction: column; }
   .chat-thread-header {
@@ -599,51 +785,120 @@ function dashboardHTML() {
   }
   .chat-thread-title { font-weight: 600; font-size: 0.95rem; }
   .chat-messages {
-    flex: 1; overflow-y: auto; max-height: 350px;
-    padding: 8px 0; display: flex; flex-direction: column; gap: 6px;
+    flex: 1; overflow-y: auto; max-height: 360px;
+    padding: 8px 0; display: flex; flex-direction: column; gap: 8px;
   }
   .chat-msg {
-    max-width: 80%; padding: 8px 14px; border-radius: 12px;
-    font-size: 0.82rem; line-height: 1.5; position: relative;
+    max-width: 78%;
+    padding: 10px 16px;
+    border-radius: 14px;
+    font-size: 0.82rem;
+    line-height: 1.55;
+    position: relative;
+    animation: msgSlideIn 0.25s var(--ease);
   }
-  .chat-msg-inbound { align-self: flex-start; background: var(--surface-2); border: 1px solid var(--border); }
-  .chat-msg-outbound { align-self: flex-end; }
-  .chat-msg-bot { background: rgba(108,92,231,0.15); border: 1px solid rgba(108,92,231,0.3); }
-  .chat-msg-human { background: rgba(84,160,255,0.15); border: 1px solid rgba(84,160,255,0.3); }
-  .chat-msg-system { align-self: center; background: rgba(255,169,77,0.1); border: 1px solid rgba(255,169,77,0.2); font-size: 0.75rem; color: var(--orange); }
-  .chat-msg-time { font-size: 0.65rem; color: var(--text-dim); margin-top: 3px; }
+  .chat-msg-inbound {
+    align-self: flex-start;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 4px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  }
+  .chat-msg-outbound { align-self: flex-end; border-bottom-right-radius: 4px; }
+  .chat-msg-bot {
+    background: rgba(124,109,240,0.12);
+    border: 1px solid rgba(124,109,240,0.22);
+    box-shadow: 0 1px 6px rgba(124,109,240,0.08);
+  }
+  .chat-msg-human {
+    background: rgba(96,165,250,0.12);
+    border: 1px solid rgba(96,165,250,0.22);
+    box-shadow: 0 1px 6px rgba(96,165,250,0.08);
+  }
+  .chat-msg-system {
+    align-self: center;
+    background: rgba(251,191,36,0.08);
+    border: 1px solid rgba(251,191,36,0.15);
+    font-size: 0.75rem;
+    color: var(--orange);
+    border-radius: 20px;
+    padding: 6px 16px;
+  }
+  .chat-msg-time { font-size: 0.65rem; color: var(--text-dim); margin-top: 4px; }
   .chat-msg-source { font-size: 0.6rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
 
   .chat-reply-box {
-    display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
+    display: flex; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border);
   }
   .chat-reply-input {
-    flex: 1; padding: 10px 14px; border-radius: 8px;
+    flex: 1; padding: 11px 16px; border-radius: var(--radius-sm);
     border: 1px solid var(--border); background: var(--surface-2);
     color: var(--text); font-family: inherit; font-size: 0.85rem;
-    outline: none; transition: border-color 0.2s;
+    outline: none; transition: all 0.25s var(--ease);
   }
-  .chat-reply-input:focus { border-color: var(--accent); }
+  .chat-reply-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
   .chat-reply-input::placeholder { color: var(--text-dim); }
 
+  /* ── Toast ── */
   .toast {
     position: fixed;
-    bottom: 20px;
-    right: 20px;
+    bottom: 24px;
+    right: 24px;
     padding: 12px 24px;
-    border-radius: 8px;
-    font-size: 0.85rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.84rem;
     font-weight: 500;
     z-index: 1000;
-    animation: slideIn 0.3s ease;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     opacity: 0;
-    transition: opacity 0.3s;
+    transform: translateY(12px) scale(0.96);
+    transition: all 0.35s var(--ease-bounce);
+    pointer-events: none;
   }
-  .toast.show { opacity: 1; }
-  .toast-ok { background: rgba(0,214,143,0.15); color: var(--green); border: 1px solid var(--green); }
-  .toast-err { background: rgba(255,107,107,0.15); color: var(--red); border: 1px solid var(--red); }
+  .toast.show {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+  }
+  .toast-ok {
+    background: rgba(52,211,153,0.12);
+    color: var(--green);
+    border: 1px solid rgba(52,211,153,0.3);
+    box-shadow: 0 4px 20px rgba(52,211,153,0.1);
+  }
+  .toast-err {
+    background: rgba(248,113,113,0.12);
+    color: var(--red);
+    border: 1px solid rgba(248,113,113,0.3);
+    box-shadow: 0 4px 20px rgba(248,113,113,0.1);
+  }
 
-  @keyframes slideIn { from { transform: translateY(20px); } to { transform: translateY(0); } }
+  /* ── Animations ── */
+  @keyframes panelFadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes msgSlideIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes badgePop {
+    0% { transform: scale(0); }
+    60% { transform: scale(1.2); }
+    100% { transform: scale(1); }
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+
+  .loading { animation: pulse 1.5s var(--ease) infinite; color: var(--text-dim); }
+
+  /* ── Responsive ── */
   @media (max-width: 900px) {
     .grid { grid-template-columns: 1fr; }
     .chat-layout { grid-template-columns: 1fr; }
@@ -656,7 +911,7 @@ function dashboardHTML() {
 <div class="header">
   <h1>💈 Salon Bot Dashboard</h1>
   <div style="display:flex;align-items:center;gap:12px">
-    <select id="salon-select" onchange="switchSalon(this.value)" style="background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:5px 10px;font-size:14px"></select>
+    <select id="salon-select" onchange="switchSalon(this.value)"></select>
     <span id="auto-badge" class="badge badge-on">AUTOMATION ON</span>
   </div>
 </div>
@@ -704,13 +959,13 @@ function dashboardHTML() {
     <button class="tab" onclick="switchTab('logs', this)">Logs</button>
   </div>
 
-  <div id="panel-soul" class="tab-panel active"><div class="config-text" id="tab-soul">Loading...</div></div>
-  <div id="panel-faq" class="tab-panel"><div class="config-text" id="tab-faq">Loading...</div></div>
-  <div id="panel-queue" class="tab-panel"><div id="tab-queue">Loading...</div></div>
-  <div id="panel-chats" class="tab-panel"><div id="tab-chats">Loading...</div></div>
-  <div id="panel-whitelist" class="tab-panel"><div id="tab-whitelist">Loading...</div></div>
-  <div id="panel-import" class="tab-panel"><div id="tab-import">Loading...</div></div>
-  <div id="panel-logs" class="tab-panel"><div class="log-container" id="tab-logs">Loading...</div></div>
+  <div id="panel-soul" class="tab-panel active"><div class="config-text" id="tab-soul"><span class="loading">Loading...</span></div></div>
+  <div id="panel-faq" class="tab-panel"><div class="config-text" id="tab-faq"><span class="loading">Loading...</span></div></div>
+  <div id="panel-queue" class="tab-panel"><div id="tab-queue"><span class="loading">Loading...</span></div></div>
+  <div id="panel-chats" class="tab-panel"><div id="tab-chats"><span class="loading">Loading...</span></div></div>
+  <div id="panel-whitelist" class="tab-panel"><div id="tab-whitelist"><span class="loading">Loading...</span></div></div>
+  <div id="panel-import" class="tab-panel"><div id="tab-import"><span class="loading">Loading...</span></div></div>
+  <div id="panel-logs" class="tab-panel"><div class="log-container" id="tab-logs"><span class="loading">Loading...</span></div></div>
 </div>
 
 <div id="toast" class="toast"></div>
