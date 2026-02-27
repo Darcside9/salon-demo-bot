@@ -178,18 +178,48 @@ export function setupDashboard({ app, reloadConfig }) {
         return res.status(503).json({ error: 'WhatsApp client not ready' });
       }
 
-      // Build correct WhatsApp ID — @lid IDs are already complete,
-      // plain phone numbers need @c.us appended
-      const waId = customerId.includes('@') ? customerId : customerId + '@c.us';
-      console.log(`📤 Dashboard reply → waId=${waId}  customerId=${customerId}`);
+      // Build WhatsApp ID — try @lid first (modern linked devices), then @c.us
+      const hasAt = customerId.includes('@');
+      const lidId = hasAt ? customerId : customerId + '@lid';
+      const cusId = hasAt ? customerId : customerId + '@c.us';
 
+      console.log(`📤 Dashboard reply → customerId=${customerId}  trying lid=${lidId}`);
+
+      let sent = false;
+
+      // Attempt 1: getChatById with @lid
       try {
-        // Try getChatById first (works for both @c.us and @lid formats)
-        const chat = await client.getChatById(waId);
+        const chat = await client.getChatById(lidId);
         await chat.sendMessage(message.trim());
-      } catch (chatErr) {
-        console.log(`⚠️ getChatById failed for ${waId}, trying sendMessage directly:`, chatErr.message);
-        await client.sendMessage(waId, message.trim());
+        sent = true;
+      } catch (e1) {
+        console.log(`⚠️ getChatById @lid failed: ${e1.message}`);
+      }
+
+      // Attempt 2: sendMessage with @lid directly
+      if (!sent) {
+        try {
+          await client.sendMessage(lidId, message.trim());
+          sent = true;
+        } catch (e2) {
+          console.log(`⚠️ sendMessage @lid failed: ${e2.message}`);
+        }
+      }
+
+      // Attempt 3: getChatById with @c.us
+      if (!sent) {
+        try {
+          const chat = await client.getChatById(cusId);
+          await chat.sendMessage(message.trim());
+          sent = true;
+        } catch (e3) {
+          console.log(`⚠️ getChatById @c.us failed: ${e3.message}`);
+        }
+      }
+
+      // Attempt 4: sendMessage with @c.us
+      if (!sent) {
+        await client.sendMessage(cusId, message.trim());
       }
 
       // Log the human reply
