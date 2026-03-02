@@ -1,5 +1,9 @@
 import pkg from "whatsapp-web.js";
 import qrcode from "qrcode-terminal";
+import fs from "fs/promises";
+import path from "path";
+import { getState, setWhatsAppState } from "./runtimeState.js";
+import { logger } from "./logger.js";
 
 const { Client, LocalAuth } = pkg;
 
@@ -7,9 +11,15 @@ function getChromiumPath() {
   return process.env.CHROME_PATH || "/usr/bin/google-chrome";
 }
 
+let activeClient = null;
+let activeMsgHandler = null;
+
 export function startWhatsApp({ onMessage }) {
-  console.log("📌 Initializing WhatsApp client...");
-  console.log("🧭 Chromium path:", getChromiumPath());
+  activeMsgHandler = onMessage;
+  logger.info("📌 Initializing WhatsApp client...");
+  logger.info("🧭 Chromium path:", getChromiumPath());
+
+  setWhatsAppState('INITIALIZING');
 
   const client = new Client({
     authStrategy: new LocalAuth({
@@ -32,39 +42,51 @@ export function startWhatsApp({ onMessage }) {
   });
 
   client.on("loading_screen", (percent, message) => {
-    console.log(`📲 Loading WhatsApp: ${percent}% - ${message}`);
+    setWhatsAppState('LOADING');
+    logger.info(`📲 Loading WhatsApp: ${percent}% - ${message}`);
   });
 
   client.on("qr", (qr) => {
-    console.log("\n📱 Scan this QR with the salon WhatsApp account:\n");
+    const state = getState();
+    state.qr = qr;
+    state.qrUpdatedAt = Date.now();
+    setWhatsAppState('NEEDS_LINK');
+
+    logger.info("\n📱 Scan this QR with the salon WhatsApp account:\n");
     qrcode.generate(qr, { small: true });
   });
 
   client.on("ready", () => {
-    console.log("✅ WhatsApp client ready");
+    const state = getState();
+    state.qr = null;
+    setWhatsAppState('READY');
+    logger.info("✅ WhatsApp client ready");
   });
 
   client.on("authenticated", () => {
-    console.log("✅ WhatsApp authenticated");
+    setWhatsAppState('AUTHENTICATED');
+    logger.info("✅ WhatsApp authenticated");
   });
 
   client.on("auth_failure", (msg) => {
-    console.error("❌ Auth failure:", msg);
+    setWhatsAppState('AUTH_FAILURE');
+    logger.error("❌ Auth failure:", msg);
   });
 
   client.on("disconnected", (reason) => {
-    console.error("⚠️ WhatsApp disconnected:", reason);
+    setWhatsAppState('DISCONNECTED');
+    logger.error("⚠️ WhatsApp disconnected:", reason);
   });
 
-  client.on("change_state", (state) => {
-    console.log("ℹ️ WhatsApp state changed:", state);
+  client.on("change_state", (stateMsg) => {
+    logger.info("ℹ️ WhatsApp state changed:", stateMsg);
   });
 
   client.on("message", async (msg) => {
     try {
       await onMessage(msg, client);
     } catch (err) {
-      console.error("❌ Message handler error:", err);
+      logger.error("❌ Message handler error:", err);
 
       const from = String(msg.from || '').replace('@c.us', '').replace('@g.us', '');
       const isOwner = from === String(process.env.OWNER_NUMBER || '').trim();
@@ -79,7 +101,7 @@ export function startWhatsApp({ onMessage }) {
     }
   });
 
-  console.log("🚀 Calling client.initialize()...");
+  logger.info("🚀 Calling client.initialize()...");
 
   // Retry logic — whatsapp-web.js can hit a ProtocolError race condition
   // during page navigation in Puppeteer. Retrying usually fixes it.
@@ -93,16 +115,54 @@ export function startWhatsApp({ onMessage }) {
         const isRetryable = err.message?.includes('Execution context was destroyed')
           || err.message?.includes('Protocol error');
         if (isRetryable && attempt < MAX_RETRIES) {
-          console.warn(`⚠️ WhatsApp init failed (attempt ${attempt}/${MAX_RETRIES}): ${err.message}`);
-          console.log(`🔄 Retrying in 3 seconds...`);
+          logger.warn(`⚠️ WhatsApp init failed (attempt ${attempt}/${MAX_RETRIES}): ${err.message}`);
+          logger.info(`🔄 Retrying in 3 seconds...`);
           await new Promise(r => setTimeout(r, 3000));
         } else {
-          console.error(`❌ WhatsApp init failed after ${attempt} attempts:`, err.message);
+          logger.error(`❌ WhatsApp init failed after ${attempt} attempts:`, err.message);
+          setWhatsAppState('ERROR');
           throw err;
         }
       }
     }
   })();
 
+  activeClient = client;
   return client;
+}
+
+export async function relinkWhatsApp() {
+  logger.info("🔄 Initiating WhatsApp relink process...");
+  setWhatsAppState('LINKING');
+
+  if (activeClient) {
+    logger.info("Destroying active WhatsApp client...");
+    try {
+      await activeClient.destroy();
+    } catch (e) {
+      logger.error("Failed to cleanly destroy client (maybe already dead):", e.message);
+    }
+    activeClient = null;
+  }
+
+  // Wipe Auth Folder safely
+  const authDir = path.join(process.cwd(), '.wwebjs_auth');
+  const cacheDir = path.join(process.cwd(), '.wwebjs_cache');
+
+  try {
+    await fs.rm(authDir, { recursive: true, force: true });
+    logger.info(`🗑️ Cleared auth directory: ${authDir}`);
+  } catch (e) {
+    logger.warn(`Could not clear auth dir: ${e.message}`);
+  }
+
+  try {
+    await fs.rm(cacheDir, { recursive: true, force: true });
+    logger.info(`🗑️ Cleared cache directory: ${cacheDir}`);
+  } catch (e) {
+    logger.warn(`Could not clear cache dir: ${e.message}`);
+  }
+
+  logger.info("🚀 Starting fresh WhatsApp client...");
+  return startWhatsApp({ onMessage: activeMsgHandler });
 }

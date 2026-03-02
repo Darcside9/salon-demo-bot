@@ -9,33 +9,11 @@ import {
 import { getHandoverQueue, claimHandoverRequest, resolveHandoverRequest, resolveOpenRequestsForCustomer } from './handoverStore.js';
 import { getRecentChats, getCustomerMessages, logMessage } from './messageStore.js';
 import { proposeKnowledgeUpdate } from './websiteImport.js';
-
-// ─── In-memory log ring buffer ──────────────────────────────
-const LOG_BUFFER_SIZE = 200;
-const logBuffer = [];
-
-function captureLog(level, args) {
-  logBuffer.push({
-    ts: new Date().toISOString(),
-    level,
-    msg: args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ')
-  });
-  if (logBuffer.length > LOG_BUFFER_SIZE) logBuffer.shift();
-}
-
-function installLogCapture() {
-  const origLog = console.log.bind(console);
-  const origErr = console.error.bind(console);
-  const origWarn = console.warn.bind(console);
-
-  console.log = (...args) => { captureLog('info', args); origLog(...args); };
-  console.error = (...args) => { captureLog('error', args); origErr(...args); };
-  console.warn = (...args) => { captureLog('warn', args); origWarn(...args); };
-}
+import { relinkWhatsApp } from './whatsapp.js';
+import qrcode from 'qrcode';
 
 // ─── Dashboard setup ────────────────────────────────────────
 export function setupDashboard({ app, reloadConfig }) {
-  installLogCapture();
 
   // ── Existing API routes ──
   app.get('/api/status', async (_req, res) => {
@@ -122,6 +100,41 @@ export function setupDashboard({ app, reloadConfig }) {
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  // ── WhatsApp & Logs API ──
+  app.get('/api/whatsapp/status', (req, res) => {
+    const state = getState();
+    res.json({ status: state.whatsappStatus, updatedAt: state.qrUpdatedAt });
+  });
+
+  app.get('/api/whatsapp/qr', async (req, res) => {
+    try {
+      const state = getState();
+      if (!state.qr) {
+        return res.json({ qr: null, updatedAt: state.qrUpdatedAt });
+      }
+      const dataUrl = await qrcode.toDataURL(state.qr, { width: 300, margin: 1, color: { dark: '#000000', light: '#ffffff' } });
+      res.json({ qr: dataUrl, updatedAt: state.qrUpdatedAt });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to generate QR data URL' });
+    }
+  });
+
+  app.post('/api/whatsapp/relink', async (req, res) => {
+    try {
+      await relinkWhatsApp();
+      res.json({ ok: true, message: 'Relink started' });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/logs/tail', (req, res) => {
+    const state = getState();
+    const limit = parseInt(req.query.lines, 10) || 200;
+    const lines = state.logBuffer.slice(-limit);
+    res.json({ lines });
   });
 
   // ── Chats API ──
@@ -362,6 +375,63 @@ export function setupDashboard({ app, reloadConfig }) {
       setConfig(config);
       res.json({ ok: true, version: restored.version });
     } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── File Uploads API ──
+  app.post('/api/upload/soul', express.text(), async (req, res) => {
+    try {
+      const state = getState();
+      const currentConfig = await getActiveConfig(state.salon.id);
+
+      const soul_md = req.body;
+      if (!soul_md || typeof soul_md !== 'string') {
+        return res.status(400).json({ error: 'Invalid SOUL content, must be raw text' });
+      }
+
+      await createDraftConfig({
+        salonId: state.salon.id,
+        soulMd: soul_md,
+        faqJson: currentConfig?.faq_json || [],
+        createdBy: 'admin_dashboard_upload'
+      });
+      const activated = await approveLatestDraft(state.salon.id);
+
+      const newConfig = await getActiveConfig(state.salon.id);
+      setConfig(newConfig);
+
+      res.json({ ok: true, version: activated.version });
+    } catch (err) {
+      console.error('SOUL upload error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/upload/faq', express.json(), async (req, res) => {
+    try {
+      const state = getState();
+      const currentConfig = await getActiveConfig(state.salon.id);
+
+      const faq_json = req.body;
+      if (!Array.isArray(faq_json)) {
+        return res.status(400).json({ error: 'FAQ must be a JSON array' });
+      }
+
+      await createDraftConfig({
+        salonId: state.salon.id,
+        soulMd: currentConfig?.soul_md || '',
+        faqJson: faq_json,
+        createdBy: 'admin_dashboard_upload'
+      });
+      const activated = await approveLatestDraft(state.salon.id);
+
+      const newConfig = await getActiveConfig(state.salon.id);
+      setConfig(newConfig);
+
+      res.json({ ok: true, version: activated.version });
+    } catch (err) {
+      console.error('FAQ upload error:', err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -986,15 +1056,31 @@ function dashboardHTML() {
     <button class="tab" onclick="switchTab('chats', this)">Chats</button>
     <button class="tab" onclick="switchTab('whitelist', this)">Whitelist</button>
     <button class="tab" onclick="switchTab('import', this)">Import</button>
+    <button class="tab" id="tab-btn-link" onclick="switchTab('link', this)">Link Device</button>
     <button class="tab" onclick="switchTab('logs', this)">Logs</button>
   </div>
 
-  <div id="panel-soul" class="tab-panel active"><div class="config-text" id="tab-soul"><span class="loading">Loading...</span></div></div>
-  <div id="panel-faq" class="tab-panel"><div class="config-text" id="tab-faq"><span class="loading">Loading...</span></div></div>
+  <div id="panel-soul" class="tab-panel active">
+    <div style="margin-bottom:15px; display:flex; gap:10px; align-items:center;">
+      <input type="file" id="upload-soul" accept=".md" style="font-size:0.8rem;">
+      <button class="btn btn-blue btn-sm" onclick="uploadConfig('soul', document.getElementById('upload-soul'))">Upload Custom SOUL</button>
+    </div>
+    <div class="config-text" id="tab-soul"><span class="loading">Loading...</span></div>
+  </div>
+  
+  <div id="panel-faq" class="tab-panel">
+    <div style="margin-bottom:15px; display:flex; gap:10px; align-items:center;">
+      <input type="file" id="upload-faq" accept=".json" style="font-size:0.8rem;">
+      <button class="btn btn-blue btn-sm" onclick="uploadConfig('faq', document.getElementById('upload-faq'))">Upload Custom FAQ</button>
+    </div>
+    <div class="config-text" id="tab-faq"><span class="loading">Loading...</span></div>
+  </div>
+  
   <div id="panel-queue" class="tab-panel"><div id="tab-queue"><span class="loading">Loading...</span></div></div>
   <div id="panel-chats" class="tab-panel"><div id="tab-chats"><span class="loading">Loading...</span></div></div>
   <div id="panel-whitelist" class="tab-panel"><div id="tab-whitelist"><span class="loading">Loading...</span></div></div>
   <div id="panel-import" class="tab-panel"><div id="tab-import"><span class="loading">Loading...</span></div></div>
+  <div id="panel-link" class="tab-panel"><div id="tab-link"><span class="loading">Loading...</span></div></div>
   <div id="panel-logs" class="tab-panel"><div class="log-container" id="tab-logs"><span class="loading">Loading...</span></div></div>
 </div>
 
@@ -1009,6 +1095,47 @@ function dashboardHTML() {
   async function apiFetch(url) {
     const r = await fetch(url);
     return r.json();
+  }
+
+  // ── Upload Handlers ──
+  async function uploadConfig(type, inputEl) {
+    const file = inputEl.files[0];
+    if (!file) {
+      showToast('Please select a file first', 'err');
+      return;
+    }
+    
+    try {
+      inputEl.disabled = true;
+      const text = await file.text();
+      
+      const endpoint = type === 'soul' ? '/api/upload/soul' : '/api/upload/faq';
+      const contentType = type === 'soul' ? 'text/plain' : 'application/json';
+      
+      if (type === 'faq') {
+        try { JSON.parse(text); } catch(e) { throw new Error('Invalid JSON format'); }
+      }
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': contentType },
+        body: text
+      });
+      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      
+      showToast('Successfully uploaded ' + type.toUpperCase() + ' (v' + data.version + ')', 'ok');
+      inputEl.value = '';
+      
+      if (type === 'soul') refreshSoul();
+      if (type === 'faq') refreshFaq();
+      refreshStatus();
+    } catch (err) {
+      showToast('Upload error: ' + err.message, 'err');
+    } finally {
+      inputEl.disabled = false;
+    }
   }
 
   async function apiPost(url, body) {
@@ -1125,24 +1252,49 @@ function dashboardHTML() {
         return;
       }
 
-      const listHtml = chats.map(c => {
+      let chatLayout = container.querySelector('.chat-layout');
+      if (!chatLayout) {
+        container.innerHTML = '<div class="chat-layout"><div class="chat-list"></div><div id="thread-wrapper" data-customer="' + (selectedCustomer || '') + '"><div class="empty-state">Select a chat to view messages</div></div></div>';
+      }
+      
+      const chatList = container.querySelector('.chat-list');
+      const existingNodes = Array.from(chatList.children);
+      const newIds = new Set(chats.map(c => c.customerId));
+      
+      existingNodes.forEach(n => {
+        if (!newIds.has(n.dataset.customerId)) n.remove();
+      });
+
+      chats.forEach((c, idx) => {
+        let node = Array.from(chatList.children).find(el => el.dataset.customerId === c.customerId);
         const active = selectedCustomer === c.customerId ? ' active' : '';
         const modeCls = 'mode-' + c.mode;
         const time = new Date(c.lastAt).toLocaleTimeString();
-        return '<div class="chat-list-item' + active + '" onclick="selectChat(\\'' + c.customerId + '\\')">' +
-          '<div class="chat-list-name">' +
-            '<span>' + escHtml(c.customerId) + '</span>' +
-            '<span class="chat-mode-badge ' + modeCls + '">' + c.mode + '</span>' +
-          '</div>' +
-          '<div class="chat-list-preview">' + escHtml(c.lastMessage?.slice(0, 60) || '') + ' · ' + time + '</div>' +
-        '</div>';
-      }).join('');
+        const previewText = escHtml(c.lastMessage?.slice(0, 60) || '') + ' · ' + time;
+        
+        if (!node) {
+          node = document.createElement('div');
+          node.dataset.customerId = c.customerId;
+          node.onclick = () => selectChat(c.customerId);
+          node.innerHTML = '<div class="chat-list-name"><span>' + escHtml(c.customerId) + '</span><span class="chat-mode-badge ' + modeCls + '">' + c.mode + '</span></div><div class="chat-list-preview">' + previewText + '</div>';
+          chatList.appendChild(node);
+        } else {
+          const badge = node.querySelector('.chat-mode-badge');
+          if (badge && badge.textContent !== c.mode) {
+            badge.className = 'chat-mode-badge ' + modeCls;
+            badge.textContent = c.mode;
+          }
+          const prevDiv = node.querySelector('.chat-list-preview');
+          if (prevDiv && prevDiv.innerHTML !== previewText) {
+            prevDiv.innerHTML = previewText;
+          }
+        }
+        node.className = 'chat-list-item' + active;
 
-      const threadHtml = selectedCustomer
-        ? '<div class="chat-thread" id="chat-thread">Loading thread...</div>'
-        : '<div class="empty-state">Select a chat to view messages</div>';
-
-      container.innerHTML = '<div class="chat-layout"><div class="chat-list">' + listHtml + '</div><div>' + threadHtml + '</div></div>';
+        if (chatList.children[idx] !== node) {
+          chatList.insertBefore(node, chatList.children[idx]);
+        }
+      });
 
       if (selectedCustomer) loadThread(selectedCustomer);
     } catch (err) {
@@ -1152,32 +1304,48 @@ function dashboardHTML() {
 
   async function selectChat(customerId) {
     selectedCustomer = customerId;
+    const wrapper = document.getElementById('thread-wrapper');
+    if (wrapper) {
+      wrapper.innerHTML = '<div class="chat-thread" id="chat-thread">Loading thread...</div>';
+      wrapper.dataset.customer = customerId;
+    }
     refreshChats();
   }
 
   async function loadThread(customerId) {
     try {
       const data = await apiFetch('/api/chats/' + customerId + '/messages');
-      const threadEl = document.getElementById('chat-thread');
-      if (!threadEl) return;
+      const wrapper = document.getElementById('thread-wrapper');
+      if (wrapper && wrapper.dataset.customer !== customerId) return; // Stale fetch
 
-      // Preserve reply input value across refreshes
-      const existingInput = document.getElementById('reply-input');
-      const savedValue = existingInput ? existingInput.value : '';
+      let threadEl = document.getElementById('chat-thread');
+      let msgsEl = threadEl ? threadEl.querySelector('.chat-messages') : null;
+      
+      if (!threadEl || !msgsEl) {
+        if (wrapper) wrapper.innerHTML = '<div class="chat-thread" id="chat-thread"><div class="chat-thread-header"></div><div class="chat-messages"></div></div>';
+        threadEl = document.getElementById('chat-thread');
+        if (threadEl) msgsEl = threadEl.querySelector('.chat-messages');
+      }
 
       const modeCls = 'mode-' + data.mode;
       const isHuman = data.mode === 'human' || data.mode === 'handover_requested';
 
-      let html = '<div class="chat-thread-header">' +
-        '<div class="chat-thread-title">📱 ' + escHtml(customerId) + ' <span class="chat-mode-badge ' + modeCls + '">' + data.mode + '</span></div>' +
+      // 1. Header DOM Diff
+      const headerEl = threadEl.querySelector('.chat-thread-header');
+      const headerInner = '<div class="chat-thread-title">📱 ' + escHtml(customerId) + ' <span class="chat-mode-badge ' + modeCls + '">' + data.mode + '</span></div>' +
         '<div class="controls">' +
           (data.mode === 'bot' ? '<button class="btn btn-blue btn-sm" onclick="takeOverChat(\\'' + customerId + '\\')">Take Over</button>' : '') +
           (isHuman ? '<button class="btn btn-green btn-sm" onclick="resumeBot(\\'' + customerId + '\\')">Resume Bot</button>' : '') +
-        '</div>' +
-      '</div>';
+        '</div>';
+      if (headerEl && headerEl.innerHTML !== headerInner) {
+        headerEl.innerHTML = headerInner;
+      }
 
-      html += '<div class="chat-messages">';
-      for (const m of data.messages) {
+      // 2. Messages DOM Diff
+      const isAtBottom = msgsEl ? (msgsEl.scrollHeight - msgsEl.scrollTop <= msgsEl.clientHeight + 50) : true;
+
+      data.messages.forEach((m, idx) => {
+        let node = msgsEl.children[idx];
         const time = new Date(m.created_at).toLocaleTimeString();
         let cls = 'chat-msg ';
         if (m.source === 'system') cls += 'chat-msg-system';
@@ -1186,33 +1354,44 @@ function dashboardHTML() {
         else if (m.source === 'human') cls += 'chat-msg-outbound chat-msg-human';
         else cls += 'chat-msg-outbound';
 
-        html += '<div class="' + cls + '">';
-        if (m.source !== 'system') html += '<div class="chat-msg-source">' + m.source + '</div>';
-        html += escHtml(m.text);
-        html += '<div class="chat-msg-time">' + time + '</div>';
-        html += '</div>';
+        let inner = '';
+        if (m.source !== 'system') inner += '<div class="chat-msg-source">' + m.source + '</div>';
+        inner += escHtml(m.text);
+        inner += '<div class="chat-msg-time">' + time + '</div>';
+
+        if (!node) {
+          node = document.createElement('div');
+          node.className = cls;
+          node.dataset.id = String(m.id || idx);
+          node.innerHTML = inner;
+          msgsEl.appendChild(node);
+        } else if (node.dataset.id !== String(m.id || idx) || node.innerHTML !== inner) {
+          node.className = cls;
+          node.dataset.id = String(m.id || idx);
+          node.innerHTML = inner;
+        }
+      });
+
+      // Cleanup trailing messages if deleted
+      while (msgsEl.children.length > data.messages.length) {
+        msgsEl.removeChild(msgsEl.lastChild);
       }
-      html += '</div>';
 
-      // Reply box (only show if in human mode)
-      if (isHuman) {
-        html += '<div class="chat-reply-box">' +
-          '<input class="chat-reply-input" id="reply-input" placeholder="Type a reply..." onkeydown="if(event.key===\\'Enter\\')sendReply(\\'' + customerId + '\\')">'+
-          '<button class="btn btn-blue btn-sm" onclick="sendReply(\\'' + customerId + '\\')">Send</button>' +
-        '</div>';
+      // 3. Reply Box DOM Diff 
+      let replyBox = threadEl.querySelector('.chat-reply-box');
+      if (isHuman && !replyBox) {
+        replyBox = document.createElement('div');
+        replyBox.className = 'chat-reply-box';
+        replyBox.innerHTML = '<input class="chat-reply-input" id="reply-input" placeholder="Type a reply..." onkeydown="if(event.key===\\'Enter\\')sendReply(\\'' + customerId + '\\')">' +
+          '<button class="btn btn-blue btn-sm" onclick="sendReply(\\'' + customerId + '\\')">Send</button>';
+        threadEl.appendChild(replyBox);
+      } else if (!isHuman && replyBox) {
+        replyBox.remove();
       }
 
-      threadEl.innerHTML = html;
-
-      // Restore reply input value
-      const newInput = document.getElementById('reply-input');
-      if (newInput && savedValue) {
-        newInput.value = savedValue;
+      if (isAtBottom) {
+        msgsEl.scrollTo({ top: msgsEl.scrollHeight, behavior: 'smooth' });
       }
-
-      // Auto-scroll messages to bottom (smooth, after DOM paint)
-      const msgsEl = threadEl.querySelector('.chat-messages');
-      if (msgsEl) setTimeout(() => msgsEl.scrollTo({ top: msgsEl.scrollHeight, behavior: 'smooth' }), 50);
     } catch (err) {
       console.error('Thread load error:', err);
     }
@@ -1262,6 +1441,88 @@ function dashboardHTML() {
     if (name === 'chats') refreshChats();
     if (name === 'whitelist') refreshWhitelist();
     if (name === 'import') refreshImport();
+    if (name === 'link') refreshLink();
+  }
+
+  // ── WA Link Tab ──
+  async function refreshLink() {
+    try {
+      const [statusRes, qrRes] = await Promise.all([
+        apiFetch('/api/whatsapp/status'),
+        apiFetch('/api/whatsapp/qr')
+      ]);
+      
+      let html = '<div style="max-width:400px; margin:0 auto; text-align:center; padding-top:20px;">';
+      html += '<h2 style="margin-bottom:10px;">WhatsApp Connection</h2>';
+      
+      const statusMap = {
+        'READY': '<span style="color:#10b981;font-weight:600;">✅ Connected & Ready</span>',
+        'NEEDS_LINK': '<span style="color:#eab308;font-weight:600;">⚠️ Needs Linking (Scan QR)</span>',
+        'DISCONNECTED': '<span style="color:#ef4444;font-weight:600;">❌ Disconnected</span>',
+        'LINKING': '<span style="color:#3b82f6;font-weight:600;">🔄 Relinking... Please wait</span>'
+      };
+      
+      html += '<div style="font-size:18px; margin-bottom: 20px;">Status: ' + (statusMap[statusRes.status] || statusRes.status) + '</div>';
+      
+      if (statusRes.status === 'NEEDS_LINK' && qrRes.qr) {
+        html += '<p style="color:#94a3b8;margin-bottom:15px;font-size:14px;">Scan this QR code with your business WhatsApp. It will refresh automatically.</p>';
+        html += '<img src="' + qrRes.qr + '" alt="WhatsApp QR Code" style="border: 10px solid white; border-radius: 8px; margin-bottom:20px; width: 250px; height: 250px;">';
+      } else if (statusRes.status === 'READY') {
+        html += '<p style="color:#94a3b8;margin-bottom:20px;">Your bot is connected to WhatsApp and actively listening.</p>';
+      }
+      
+      html += '<div style="margin-top: 30px;">';
+      html += '<p style="font-size:12px;color:#64748b;margin-bottom:10px;">If the bot is unresponsive or you need to switch accounts, click below to force a relink.</p>';
+      html += '<button class="btn btn-red" onclick="relinkDevice()">🔄 Force Re-Link Device</button>';
+      html += '</div></div>';
+      
+      const container = document.getElementById('tab-link');
+      if (container) container.innerHTML = html;
+    } catch (err) {
+      console.error('Link load error:', err);
+    }
+  }
+
+  window.relinkDevice = async function() {
+    if (!confirm('This will wipe the current WhatsApp session and force a new QR code to be generated. Proceed?')) return;
+    try {
+      const el = document.getElementById('tab-link');
+      if (el) el.innerHTML = '<div style="text-align:center;padding:40px;"><span class="loading">Initiating Relink...</span></div>';
+      await apiPost('/api/whatsapp/relink');
+      showToast('Relink initiated. Wait for new QR code.', 'ok');
+    } catch (err) {
+      showToast('Error: ' + err.message, 'err');
+    }
+  };
+
+  // ── Logs Tab ──
+  async function refreshLogs() {
+    try {
+      const data = await apiFetch('/api/logs/tail?lines=200');
+      const el = document.getElementById('tab-logs');
+      if (!el) return;
+      
+      if (!data.lines || data.lines.length === 0) {
+        el.innerHTML = '<div style="padding:20px;color:#94a3b8;">No logs available.</div>';
+        return;
+      }
+      
+      const logsHtml = data.lines.map(log => {
+        let cls = '';
+        if (log.level === 'error') cls = 'color:#ef4444;';
+        else if (log.level === 'warn') cls = 'color:#eab308;';
+        
+        let time = new Date(log.ts).toLocaleTimeString('en-US', {hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
+        return '<div style="margin-bottom:4px;' + cls + '"><span style="color:#64748b;margin-right:10px;">[' + time + ']</span>' + escHtml(log.text) + '</div>';
+      }).join('');
+      
+      const wasAtBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 10;
+      el.innerHTML = logsHtml;
+      
+      if (wasAtBottom) {
+        el.scrollTop = el.scrollHeight;
+      }
+    } catch (e) { console.error('Logs load error:', e); }
   }
 
   // ── Salon Selector ──
@@ -1396,6 +1657,7 @@ function dashboardHTML() {
   setInterval(() => {
     refreshStatus();
     if (activeTab === 'logs') refreshLogs();
+    if (activeTab === 'link') refreshLink();
     if (activeTab === 'queue') refreshQueue();
     if (activeTab === 'chats' && selectedCustomer) {
       // Skip refresh if user is actively typing in reply box
@@ -1403,7 +1665,7 @@ function dashboardHTML() {
       if (replyInput && document.activeElement === replyInput) return;
       loadThread(selectedCustomer);
     }
-  }, 8000);
+  }, 2000);
 </script>
 </body>
 </html>`;

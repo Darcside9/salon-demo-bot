@@ -46,16 +46,14 @@ export async function getRecentChats(salonId, limit = 30) {
         .from('messages')
         .select('customer_id, text, source, direction, created_at')
         .eq('salon_id', salonId)
+        .neq('customer_id', 'status@broadcast')
         .order('created_at', { ascending: false })
         .limit(200);
 
     if (error) throw error;
 
-    // Dedupe by customer_id, keeping the latest message
     const seen = new Map();
     for (const row of (data || [])) {
-        // Filter out status broadcasts (WhatsApp Stories)
-        if (row.customer_id === 'status@broadcast') continue;
         if (!seen.has(row.customer_id)) {
             seen.set(row.customer_id, {
                 customerId: row.customer_id,

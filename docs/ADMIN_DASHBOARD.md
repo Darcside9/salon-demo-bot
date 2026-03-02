@@ -16,9 +16,11 @@ Open **http://localhost:3000** after starting the bot.
 
 ### SOUL.md
 Preview of the active SOUL behavior prompt for the current salon.
+- **Upload Custom SOUL:** You can directly upload a replacement `.md` file to instantly deploy a new behavior prompt without utilizing the website importer.
 
 ### FAQ
-Preview of the active FAQ entries (JSON) for the current salon.
+Preview of the active FAQ entries (JSON array) for the current salon.
+- **Upload Custom FAQ:** You can directly upload a replacement `.json` array file to instantly deploy new knowledge without utilizing the website importer.
 
 ### Queue
 Handover requests waiting for attention. Each item shows:
@@ -49,8 +51,13 @@ Website import workflow:
 5. **Reject** — Discards the draft
 6. If approved by mistake, use rollback via WhatsApp command `/rollback <version>`
 
+### Link Device
+Real-time visibility into the bot's WhatsApp connection status.
+- **Force Re-Link Device** — Safely destroys the active WhatsApp session, clears the cache, and streams a fresh pairing QR code directly to the dashboard so you can seamlessly link a new device or recover a stuck session.
+
 ### Logs
-Recent console output from the bot (last 200 entries).
+Live streaming console output from the bot (last 200 entries).
+- **Sanitized** — All API keys (Groq, Supabase) and Bearer tokens are automatically redacted by the logger, making this safe for non-technical users to observe.
 
 ## Sensitive Config Policy
 The following actions are **dashboard-only** and cannot be done via WhatsApp commands:

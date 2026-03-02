@@ -23,6 +23,7 @@ import { logMessage } from './messageStore.js';
 import { createHandoverRequest, resolveOpenRequestsForCustomer } from './handoverStore.js';
 import { detectTrigger, HANDOVER_WAITING_MESSAGE } from './triggerEngine.js';
 import { sendTelegramAlert } from './notifier.js';
+import { logger } from './logger.js';
 import {
   getState, setSalon, setConfig, setWhatsAppState,
   setWhatsAppClient, setAutomation, pushError,
@@ -137,12 +138,12 @@ async function initiateHandover({ salonId, customerId, reason, messageText, msg 
 
     // Fire Telegram alert (async, don't block)
     sendTelegramAlert({ salonId, customerId, reason, message: messageText }).catch(err => {
-      console.error('Telegram alert error:', err.message);
+      logger.error('Telegram alert error:', err.message);
     });
 
-    console.log(`🔔 Handover initiated for ${customerId} — reason: ${reason}`);
+    logger.info(`🔔 Handover initiated for ${customerId} — reason: ${reason}`);
   } catch (err) {
-    console.error('Handover initiation error:', err.message);
+    logger.error('Handover initiation error:', err.message);
     pushError(err);
   }
 }
@@ -153,7 +154,7 @@ async function handleAdminCommand({ msg, command, fromNumber, resolvedPhone }) {
 
   // Check both the normalized raw ID and the resolved phone number
   if (!isOwner(fromNumber) && !(resolvedPhone && isOwner(resolvedPhone))) {
-    console.log(`🚫 Admin rejected: normalized=${fromNumber} resolved=${resolvedPhone}`);
+    logger.info(`🚫 Admin rejected: normalized=${fromNumber} resolved=${resolvedPhone}`);
     return false; // not admin, let it fall through to customer handling
   }
 
@@ -408,7 +409,7 @@ async function onMessage(msg) {
     resolvedPhone = contact?.number || contact?.id?.user || null;
   } catch { /* ignore contact lookup failure */ }
 
-  console.log(`📨 msg.from=${fromRaw}  normalized=${fromNumber}  contact.number=${resolvedPhone}  text="${text.slice(0, 50)}"`);
+  logger.info(`📨 msg.from=${fromRaw}  normalized=${fromNumber}  contact.number=${resolvedPhone}  text="${text.slice(0, 50)}"`);
 
   // owner commands — check both normalized ID and resolved phone against whitelist
   if (isCommand(text)) {
@@ -421,22 +422,22 @@ async function onMessage(msg) {
 }
 
 async function boot() {
-  console.log('🚀 Starting salon demo bot...');
+  logger.info('🚀 Starting salon demo bot...');
 
   // Load salon config
   const { salon, config } = await reloadSalonConfig();
-  console.log(`✅ Loaded salon: ${salon.name} (${salon.slug})`);
-  console.log(`✅ Active SOUL version: ${config.version}`);
+  logger.info(`✅ Loaded salon: ${salon.name} (${salon.slug})`);
+  logger.info(`✅ Active SOUL version: ${config.version}`);
 
   // Load all salons for dashboard switching
   const allSalons = await getAllSalons();
   setAllSalons(allSalons);
-  console.log(`✅ Available salons: ${allSalons.map(s => s.slug).join(', ')}`);
+  logger.info(`✅ Available salons: ${allSalons.map(s => s.slug).join(', ')}`);
 
   // Load admin whitelist
   const whitelist = await getWhitelist();
   setAdminWhitelist(whitelist);
-  console.log(`✅ Admin whitelist: ${whitelist.filter(w => w.is_active).length} active admin(s)`);
+  logger.info(`✅ Admin whitelist: ${whitelist.filter(w => w.is_active).length} active admin(s)`);
 
   // Express + Dashboard
   const app = express();
@@ -446,7 +447,7 @@ async function boot() {
 
   const port = process.env.PORT || 3000;
   app.listen(port, () => {
-    console.log(`📊 Dashboard: http://localhost:${port}`);
+    logger.info(`📊 Dashboard: http://localhost:${port}`);
   });
 
   // WhatsApp
