@@ -32,12 +32,14 @@ export function startWhatsApp({ onMessage }) {
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
+        "--disable-accelerated-2d-canvas",
         "--disable-gpu",
-        "--disable-software-rasterizer",
         "--no-first-run",
         "--no-zygote",
+        "--single-process"
       ],
-      timeout: 60000,
+      timeout: 120000,
+      protocolTimeout: 120000,
     },
   });
 
