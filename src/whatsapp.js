@@ -8,7 +8,8 @@ import { logger } from "./logger.js";
 const { Client, LocalAuth } = pkg;
 
 function getChromiumPath() {
-  return process.env.CHROME_PATH || "/usr/bin/google-chrome";
+  const configured = String(process.env.CHROME_PATH || '').trim();
+  return configured || null;
 }
 
 let activeClient = null;
@@ -35,7 +36,8 @@ export async function startWhatsApp({ onMessage }) {
   activeMsgHandler = onMessage;
   const initTask = (async () => {
     logger.info("📌 Initializing WhatsApp client...");
-    logger.info("🧭 Chromium path:", getChromiumPath());
+    const chromiumPath = getChromiumPath();
+    logger.info("🧭 Chromium path:", chromiumPath || "(bundled Puppeteer Chromium)");
 
     setWhatsAppState('INITIALIZING');
 
@@ -59,7 +61,7 @@ export async function startWhatsApp({ onMessage }) {
       }),
       puppeteer: {
         headless: true,
-        executablePath: getChromiumPath(),
+        ...(chromiumPath ? { executablePath: chromiumPath } : {}),
         args: puppeteerArgs,
         timeout: getBrowserTimeoutMs(),
         protocolTimeout: getProtocolTimeoutMs(),
@@ -129,7 +131,7 @@ export async function startWhatsApp({ onMessage }) {
     logger.info("🚀 Calling client.initialize()...");
 
     // Retry logic — whatsapp-web.js can hit transient Puppeteer race conditions.
-    const MAX_RETRIES = 3;
+    const MAX_RETRIES = 5;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
         await client.initialize();
@@ -138,22 +140,22 @@ export async function startWhatsApp({ onMessage }) {
         return client;
       } catch (err) {
         const msg = String(err?.message || err || '');
-        const isRetryable = msg.includes('Execution context was destroyed')
-          || msg.includes('Protocol error')
-          || msg.includes('ProtocolError');
+        const isRetryable = /Execution context was destroyed|Protocol error|ProtocolError|timed out|Navigation timeout|Target closed/i.test(msg);
 
         if (isRetryable && attempt < MAX_RETRIES) {
           logger.warn(`⚠️ WhatsApp init failed (attempt ${attempt}/${MAX_RETRIES}): ${msg}`);
-          logger.info(`🔄 Retrying in 5 seconds...`);
+          const waitMs = 5000 * attempt;
+          logger.info(`🔄 Retrying in ${Math.round(waitMs / 1000)} seconds...`);
           try { await client.destroy(); } catch { }
-          await new Promise(r => setTimeout(r, 5000));
+          await new Promise(r => setTimeout(r, waitMs));
           continue;
         }
 
         logger.error(`❌ WhatsApp init failed after ${attempt} attempts:`, msg);
-        setWhatsAppState('ERROR');
+        setWhatsAppState('DISCONNECTED');
         try { await client.destroy(); } catch { }
-        throw err;
+        setWhatsAppClient(null);
+        return null;
       }
     }
   })();

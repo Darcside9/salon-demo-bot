@@ -450,13 +450,32 @@ async function boot() {
     logger.info(`📊 Dashboard: http://localhost:${port}`);
   });
 
-  // WhatsApp
-  const client = await startWhatsApp({ onMessage });
-  setWhatsAppClient(client);
-  client.on('ready', () => { setWhatsAppState('ready'); });
-  client.on('authenticated', () => { setWhatsAppState('authenticated'); });
-  client.on('auth_failure', () => { setWhatsAppState('auth_failure'); });
-  client.on('disconnected', () => { setWhatsAppState('disconnected'); });
+  // WhatsApp: keep dashboard alive and retry in the background until QR/ready succeeds.
+  const WA_RETRY_MS = Number(process.env.WA_START_RETRY_MS || 20000);
+  const scheduleStart = () => {
+    startWhatsApp({ onMessage })
+      .then((client) => {
+        if (!client) {
+          logger.warn(`⚠️ WhatsApp init did not complete. Retrying in ${Math.round(WA_RETRY_MS / 1000)}s...`);
+          setTimeout(scheduleStart, WA_RETRY_MS);
+          return;
+        }
+
+        setWhatsAppClient(client);
+        client.on('ready', () => { setWhatsAppState('ready'); });
+        client.on('authenticated', () => { setWhatsAppState('authenticated'); });
+        client.on('auth_failure', () => { setWhatsAppState('auth_failure'); });
+        client.on('disconnected', () => { setWhatsAppState('disconnected'); });
+      })
+      .catch((err) => {
+        logger.error('❌ WhatsApp startup failed (non-fatal):', err?.message || err);
+        setWhatsAppState('DISCONNECTED');
+        setWhatsAppClient(null);
+        setTimeout(scheduleStart, WA_RETRY_MS);
+      });
+  };
+
+  scheduleStart();
 }
 
 boot().catch((err) => {
