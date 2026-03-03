@@ -121,12 +121,27 @@ export function setupDashboard({ app, reloadConfig }) {
     }
   });
 
+  let relinkMutex = false;
+  let lastRelinkTime = 0;
+
   app.post('/api/whatsapp/relink', async (req, res) => {
+    if (relinkMutex) {
+      return res.status(429).json({ error: 'Relink is already in progress. Please wait.' });
+    }
+    const now = Date.now();
+    if (now - lastRelinkTime < 30000) {
+      return res.status(429).json({ error: 'Relink was requested recently. Cooldown is 30 seconds.' });
+    }
+
     try {
+      relinkMutex = true;
+      lastRelinkTime = now;
       await relinkWhatsApp();
       res.json({ ok: true, message: 'Relink started' });
     } catch (err) {
       res.status(500).json({ error: err.message });
+    } finally {
+      relinkMutex = false;
     }
   });
 
