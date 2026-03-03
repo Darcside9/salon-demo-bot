@@ -128,6 +128,11 @@ export function setupDashboard({ app, reloadConfig }) {
     if (relinkMutex) {
       return res.status(429).json({ error: 'Relink is already in progress. Please wait.' });
     }
+    const state = getState();
+    if (state.whatsappState === 'INITIALIZING' || state.whatsappState === 'LOADING' || state.whatsappState === 'LINKING') {
+      return res.status(409).json({ error: 'Client is currently booting up. Cannot destroy it right now.' });
+    }
+
     const now = Date.now();
     if (now - lastRelinkTime < 30000) {
       return res.status(429).json({ error: 'Relink was requested recently. Cooldown is 30 seconds.' });

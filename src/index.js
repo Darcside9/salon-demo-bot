@@ -451,7 +451,7 @@ async function boot() {
   });
 
   // WhatsApp
-  const client = startWhatsApp({ onMessage });
+  const client = await startWhatsApp({ onMessage });
   setWhatsAppClient(client);
   client.on('ready', () => { setWhatsAppState('ready'); });
   client.on('authenticated', () => { setWhatsAppState('authenticated'); });
