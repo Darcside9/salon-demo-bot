@@ -45,15 +45,9 @@ export async function startWhatsApp({ onMessage }) {
       "--no-sandbox",
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
-      "--disable-accelerated-2d-canvas",
-      "--disable-gpu",
-      "--no-first-run",
-      "--no-zygote"
+      "--no-zygote",
+      "--single-process"
     ];
-
-    if (process.env.WA_SINGLE_PROCESS === '1') {
-      puppeteerArgs.push("--single-process");
-    }
 
     const client = new Client({
       authStrategy: new LocalAuth({
