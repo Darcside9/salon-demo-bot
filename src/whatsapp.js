@@ -1,5 +1,6 @@
 import pkg from "whatsapp-web.js";
 import qrcode from "qrcode-terminal";
+import { existsSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
 import { getState, setWhatsAppState, setWhatsAppClient } from "./runtimeState.js";
@@ -9,7 +10,17 @@ const { Client, LocalAuth } = pkg;
 
 function getChromiumPath() {
   const configured = String(process.env.CHROME_PATH || '').trim();
-  return configured || null;
+  if (configured) return configured;
+
+  const candidates = [
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+    "/snap/bin/chromium",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/google-chrome"
+  ];
+
+  return candidates.find((candidate) => existsSync(candidate)) || null;
 }
 
 let activeClient = null;
@@ -27,6 +38,36 @@ function getBrowserTimeoutMs() {
   return Number.isFinite(raw) && raw > 0 ? raw : 180000;
 }
 
+function isTrue(value) {
+  return /^(1|true|yes|on)$/i.test(String(value || '').trim());
+}
+
+function getPuppeteerArgs() {
+  const args = [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--no-zygote"
+  ];
+
+  if (isTrue(process.env.WA_SINGLE_PROCESS)) {
+    args.push("--single-process");
+  }
+
+  const remoteDebuggingPort = String(process.env.WA_REMOTE_DEBUGGING_PORT || '').trim();
+  if (remoteDebuggingPort) {
+    args.push(`--remote-debugging-port=${remoteDebuggingPort}`);
+  }
+
+  const userAgent = String(process.env.WA_USER_AGENT || '').trim();
+  if (userAgent) {
+    args.push(`--user-agent=${userAgent}`);
+  }
+
+  return args;
+}
+
 export async function startWhatsApp({ onMessage }) {
   if (initPromise) {
     logger.warn("⚠️ WhatsApp start requested while init is in progress; reusing existing init promise.");
@@ -38,16 +79,13 @@ export async function startWhatsApp({ onMessage }) {
     logger.info("📌 Initializing WhatsApp client...");
     const chromiumPath = getChromiumPath();
     logger.info("🧭 Chromium path:", chromiumPath || "(bundled Puppeteer Chromium)");
+    if (process.env.CHROME_PATH && chromiumPath && !existsSync(chromiumPath)) {
+      logger.warn(`⚠️ CHROME_PATH is set but not found on disk: ${chromiumPath}`);
+    }
 
     setWhatsAppState('INITIALIZING');
 
-    const puppeteerArgs = [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--no-zygote",
-      "--single-process"
-    ];
+    const puppeteerArgs = getPuppeteerArgs();
 
     const client = new Client({
       authStrategy: new LocalAuth({
